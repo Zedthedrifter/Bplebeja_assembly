@@ -3,7 +3,7 @@
 #SBATCH --export=ALL
 #SBATCH --partition=short
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=128G #ask for 128G memory
+#SBATCH --mem=60G #Platanus takes a lot of memory
 
 #QC has been done
 #remove reads mapped to chloroplast genome? I guess it doesn't matter too much
@@ -17,10 +17,6 @@ function quality_control {
 r1=$1
 r2=$2
 
-#fastqc output checking
-fastqc $r1 $r2 -o QC
-#no adapter detected
-#do we need to trim anything?
 
 #trim just in case
 function trim {
@@ -29,6 +25,8 @@ trimmomatic PE $r1 $r2 ${r1/fastq/trimmed.fastq} ${r1/fastq/unpaired.fastq} ${r2
 ILLUMINACLIP:${adapters}:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
 /
 }
+#fastqc output checking
+#fastqc $r1 $r2 -o QC
 trim #run once is enough
 #check QC again after trimming 
 fastqc ${r1/fastq/trimmed.fastq} ${r2/fastq/trimmed.fastq} -o QC
@@ -99,18 +97,33 @@ function assembly_platanus {
 r1=$1
 r2=$2
 prefix=$3
+indir=$4
 
 #god it's great now I've configured everything
-platanus_allee assemble -f $r1 $r2 -o $prefix -t 24 -m 128 2>assemble.log
+#platanus_allee assemble -f $r1 $r2 -o $prefix -t 24 -m 192 2>assemble.log
+#mv ${prefix}_contig.fa $indir
 
 ##phasing -- this module won't work on the currently available platanus version if your genome is longer than ~600Mbp. Email me for the bug-free version (lcampos@rbge.org.uk)
-platanus_allee phase -o ${prefix}-phased -c ${prefix}_contig.fa -IP1 $r1 $r2 -mapper minimap2 -t 32  2>phase.log
+platanus_allee phase -o ${prefix}-phased -c $indir/${prefix}_contig.fa -IP1 $r1 $r2 -mapper minimap2 -t 32  2>phase.log
+
 
 #platanus consensus
-platanus_allee consensus -o ${prefix}-consensus -c ${prefix}-phased_allPhaseBlock.fa -IP1 $r1 $r2 -t 72 2>consensus.log
-
+#platanus_allee consensus -o ${prefix}-consensus -c ${prefix}-phased_allPhaseBlock.fa -IP1 $r1 $r2 -t 72 2>consensus.log
 }
 #===================================================================
+#scaffolding with RagTag
+function Polishing_assembly {
+
+ref=$1
+query=$2
+outdir=$3
+
+ragtag.py scaffold $ref $query -o $outdir --aligner minimap2 -t 32
+#patch filling is probably introducing too much bias for similarity btw two genomes
+#scaffolding is enough i think, just fill with NNNN
+}
+#===================================================================
+
 
 #de novo assembly evaluation
 function assembly_evaluation {
@@ -132,24 +145,28 @@ ref='/home/zchen/projects/rbge/Begonia_genomes/Reference_Assembelies/conch_genom
 chlo_ref=/home/zchen/maternity_cover/Bplebeja_assembly_202505/inputs/Bplebeja_chlo.fasta
 workdir='/home/zchen/maternity_cover/Bplebeja_assembly_202505'
 indir=/home/zchen/maternity_cover/Bplebeja_assembly_202505/inputs
+assembly_dir=/home/zchen/maternity_cover/Bplebeja_assembly_202505/assembly
 #after removing reads mapped to plasmid reference:
 ncr1=$indir/${name}_1.nc.fastq.gz
-ncr2=$indir/${name}_1.nc.fastq.gz
+ncr2=$indir/${name}_2.nc.fastq.gz 
 
 #QC
-#quality_control $r1 $r2
+#quality_control $ncr1 $ncr2
 #remove_chlor $chlo_ref $r1 $r2 $name $indir #done 30/05/2025
 #the plasmid DNA has been assembled. we are only interested in the nuclear genome
 
 #map to the reference genome
 #map_to_ref $ref $ncr1 $ncr2 $name $indir
+busco -i $ref -o ref_BUSCO -c 32 -m genome -l eudicotyledons_odb12 -f  #check what a good genome should look like
 
 #assembly
 #assembly_spade $indir/$ncr1 $indir/$ncr2 $ref
-assembly_platanus $ncr1 $ncr2 bp1
+#assembly_platanus $ncr1 $ncr2 bp1 $assembly_dir
+#Polishing_assembly $ref final_contig.fasta $assembly_dir
 #===================================================================
 #assembly assessment
 #assembly_evaluation spades_assembly contigs.fasta spades_assembly_quast # 
+#assembly_evaluation assembly bp1_contig.fa assembly_quast
 }
 
 main
