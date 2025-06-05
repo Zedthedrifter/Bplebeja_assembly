@@ -3,7 +3,8 @@
 #SBATCH --export=ALL
 #SBATCH --partition=short
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=60G #Platanus takes a lot of memory
+#SBATCH --mem=120G 
+#Platanus takes a lot of memory
 
 #QC has been done
 #remove reads mapped to chloroplast genome? I guess it doesn't matter too much
@@ -97,14 +98,14 @@ function assembly_platanus {
 r1=$1
 r2=$2
 prefix=$3
-indir=$4
+assembly_dir=$4
 
 #god it's great now I've configured everything
-#platanus_allee assemble -f $r1 $r2 -o $prefix -t 24 -m 192 2>assemble.log
-#mv ${prefix}_contig.fa $indir
+#platanus_allee assemble -f $r1 $r2 -o $prefix -t 32 -m 196 2>assemble.log
+#mv ${prefix}_contig.fa $assembly_dir
 
 ##phasing -- this module won't work on the currently available platanus version if your genome is longer than ~600Mbp. Email me for the bug-free version (lcampos@rbge.org.uk)
-platanus_allee phase -o ${prefix}-phased -c $indir/${prefix}_contig.fa -IP1 $r1 $r2 -mapper minimap2 -t 32  2>phase.log
+platanus_allee phase -o ${prefix}-phased -c $assembly_dir/${prefix}_contig.fa -IP1 $r1 $r2 -mapper minimap2 -t 24  2>phase.log #3hrs +
 
 
 #platanus consensus
@@ -118,7 +119,7 @@ ref=$1
 query=$2
 outdir=$3
 
-ragtag.py scaffold $ref $query -o $outdir --aligner minimap2 -t 32
+ragtag.py scaffold $ref $query -o $outdir --aligner minimap2 -t 16 
 #patch filling is probably introducing too much bias for similarity btw two genomes
 #scaffolding is enough i think, just fill with NNNN
 }
@@ -147,8 +148,8 @@ workdir='/home/zchen/maternity_cover/Bplebeja_assembly_202505'
 indir=/home/zchen/maternity_cover/Bplebeja_assembly_202505/inputs
 assembly_dir=/home/zchen/maternity_cover/Bplebeja_assembly_202505/assembly
 #after removing reads mapped to plasmid reference:
-ncr1=$indir/${name}_1.nc.fastq.gz
-ncr2=$indir/${name}_2.nc.fastq.gz 
+ncr1=$indir/${name}_1.nc.trimmed.fastq.gz
+ncr2=$indir/${name}_2.nc.trimmed.fastq.gz 
 
 #QC
 #quality_control $ncr1 $ncr2
@@ -157,16 +158,17 @@ ncr2=$indir/${name}_2.nc.fastq.gz
 
 #map to the reference genome
 #map_to_ref $ref $ncr1 $ncr2 $name $indir
-busco -i $ref -o ref_BUSCO -c 32 -m genome -l eudicotyledons_odb12 -f  #check what a good genome should look like
-
+#busco -i $ref -o ref_BUSCO -c 32 -m genome -l eudicotyledons_odb12 -r  #check what a good genome should look like
+busco -i $assembly_dir/bp2_contig.fa -o Bp_BUSCO -c 32 -m genome -l eudicotyledons_odb12 -f
 #assembly
 #assembly_spade $indir/$ncr1 $indir/$ncr2 $ref
-#assembly_platanus $ncr1 $ncr2 bp1 $assembly_dir
+#===================================================================
+#assembly_platanus $ncr1 $ncr2 bp2 $assembly_dir
 #Polishing_assembly $ref final_contig.fasta $assembly_dir
 #===================================================================
 #assembly assessment
 #assembly_evaluation spades_assembly contigs.fasta spades_assembly_quast # 
-#assembly_evaluation assembly bp1_contig.fa assembly_quast
+#assembly_evaluation assembly bp2_contig.fa assembly_quast
 }
 
 main
